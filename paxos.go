@@ -20,29 +20,39 @@ package paxos
 // px.Min() int -- instances before this seq have been forgotten
 //
 
-import "net"
-import "net/rpc"
-import "log"
-import "os"
-import "syscall"
-import "sync"
-import "fmt"
-import "math/rand"
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"net"
+	"net/rpc"
+	"os"
+	"sync"
+	"syscall"
+)
 
+type Paxos struct { // MIT provided line
+	mu         sync.Mutex   // MIT provided line
+	l          net.Listener // MIT provided line
+	dead       bool         // MIT provided line
+	unreliable bool         // MIT provided line
+	rpcCount   int          // MIT provided line
+	peers      []string     // MIT provided line
+	me         int          // index into peers[], MIT Provided line
 
-type Paxos struct {
-  mu sync.Mutex
-  l net.Listener
-  dead bool
-  unreliable bool
-  rpcCount int
-  peers []string
-  me int // index into peers[]
+	// Your data here.
+} // MIT provided line
 
+// PROVIDED BY MIT means
+// provided by MIT 6.824x Distributed Systems Master Course 2014
 
-  // Your data here.
-}
+// NOTE: MIT provided the desgin of the interface for this library meaning
+// how the user should interact with library
+// meaning the library should contain set of fucntions
+//  start(), done(), max(), min(), status()
 
+// All Code except marked methods and lines were
+// Authored by Garrison Shepard
 //
 // call() sends an RPC to the rpcname handler on server srv
 // with arguments args, waits for the reply, and leaves the
@@ -59,26 +69,27 @@ type Paxos struct {
 // please use call() to send all RPCs, in client.go and server.go.
 // please do not change this function.
 //
+
+// MIT provided function
 func call(srv string, name string, args interface{}, reply interface{}) bool {
-  c, err := rpc.Dial("unix", srv)
-  if err != nil {
-    err1 := err.(*net.OpError)
-    if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
-      fmt.Printf("paxos Dial() failed: %v\n", err1)
-    }
-    return false
-  }
-  defer c.Close()
-    
-  err = c.Call(name, args, reply)
-  if err == nil {
-    return true
-  }
+	c, err := rpc.Dial("unix", srv)
+	if err != nil {
+		err1 := err.(*net.OpError)
+		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
+			fmt.Printf("paxos Dial() failed: %v\n", err1)
+		}
+		return false
+	}
+	defer c.Close()
 
-  fmt.Println(err)
-  return false
+	err = c.Call(name, args, reply)
+	if err == nil {
+		return true
+	}
+
+	fmt.Println(err)
+	return false
 }
-
 
 //
 // the application wants paxos to start agreement on
@@ -88,7 +99,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // is reached.
 //
 func (px *Paxos) Start(seq int, v interface{}) {
-  // Your code here.
+	// Your code here.
 }
 
 //
@@ -98,7 +109,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 // see the comments for Min() for more explanation.
 //
 func (px *Paxos) Done(seq int) {
-  // Your code here.
+	// Your code here.
 }
 
 //
@@ -107,11 +118,10 @@ func (px *Paxos) Done(seq int) {
 // this peer.
 //
 func (px *Paxos) Max() int {
-  // Your code here.
-  return 0
+	// Your code here.
+	return 0
 }
 
-//
 // Min() should return one more than the minimum among z_i,
 // where z_i is the highest number ever passed
 // to Done() on peer i. A peers z_i is -1 if it has
@@ -138,10 +148,10 @@ func (px *Paxos) Max() int {
 // life, it will need to catch up on instances that it
 // missed -- the other peers therefor cannot forget these
 // instances.
-// 
+//
 func (px *Paxos) Min() int {
-  // You code here.
-  return 0
+	// You code here.
+	return 0
 }
 
 //
@@ -152,87 +162,86 @@ func (px *Paxos) Min() int {
 // it should not contact other Paxos peers.
 //
 func (px *Paxos) Status(seq int) (bool, interface{}) {
-  // Your code here.
-  return false, nil
+	// Your code here.
+	return false, nil
 }
-
 
 //
 // tell the peer to shut itself down.
 // for testing.
 // please do not change this function.
-//
+
+// MIT provided function
 func (px *Paxos) Kill() {
-  px.dead = true
-  if px.l != nil {
-    px.l.Close()
-  }
+	px.dead = true
+	if px.l != nil {
+		px.l.Close()
+	}
 }
 
 //
 // the application wants to create a paxos peer.
 // the ports of all the paxos peers (including this one)
 // are in peers[]. this servers port is peers[me].
-//
+
+// MIT provided function
 func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
-  px := &Paxos{}
-  px.peers = peers
-  px.me = me
+	px := &Paxos{}
+	px.peers = peers
+	px.me = me
 
+	// Your initialization code here.
 
-  // Your initialization code here.
+	if rpcs != nil {
+		// caller will create socket &c
+		rpcs.Register(px)
+	} else {
+		rpcs = rpc.NewServer()
+		rpcs.Register(px)
 
-  if rpcs != nil {
-    // caller will create socket &c
-    rpcs.Register(px)
-  } else {
-    rpcs = rpc.NewServer()
-    rpcs.Register(px)
+		// prepare to receive connections from clients.
+		// change "unix" to "tcp" to use over a network.
+		os.Remove(peers[me]) // only needed for "unix"
+		l, e := net.Listen("unix", peers[me])
+		if e != nil {
+			log.Fatal("listen error: ", e)
+		}
+		px.l = l
 
-    // prepare to receive connections from clients.
-    // change "unix" to "tcp" to use over a network.
-    os.Remove(peers[me]) // only needed for "unix"
-    l, e := net.Listen("unix", peers[me]);
-    if e != nil {
-      log.Fatal("listen error: ", e);
-    }
-    px.l = l
-    
-    // please do not change any of the following code,
-    // or do anything to subvert it.
-    
-    // create a thread to accept RPC connections
-    go func() {
-      for px.dead == false {
-        conn, err := px.l.Accept()
-        if err == nil && px.dead == false {
-          if px.unreliable && (rand.Int63() % 1000) < 100 {
-            // discard the request.
-            conn.Close()
-          } else if px.unreliable && (rand.Int63() % 1000) < 200 {
-            // process the request but force discard of reply.
-            c1 := conn.(*net.UnixConn)
-            f, _ := c1.File()
-            err := syscall.Shutdown(int(f.Fd()), syscall.SHUT_WR)
-            if err != nil {
-              fmt.Printf("shutdown: %v\n", err)
-            }
-            px.rpcCount++
-            go rpcs.ServeConn(conn)
-          } else {
-            px.rpcCount++
-            go rpcs.ServeConn(conn)
-          }
-        } else if err == nil {
-          conn.Close()
-        }
-        if err != nil && px.dead == false {
-          fmt.Printf("Paxos(%v) accept: %v\n", me, err.Error())
-        }
-      }
-    }()
-  }
+		// please do not change any of the following code,
+		// or do anything to subvert it.
 
+		// create a thread to accept RPC connections
+		go func() {
+			for px.dead == false {
+				conn, err := px.l.Accept()
+				if err == nil && px.dead == false {
+					if px.unreliable && (rand.Int63()%1000) < 100 {
+						// discard the request.
+						conn.Close()
+					} else if px.unreliable && (rand.Int63()%1000) < 200 {
+						// process the request but force discard of reply.
+						c1 := conn.(*net.UnixConn)
+						f, _ := c1.File()
+						err := syscall.Shutdown(int(f.Fd()), syscall.SHUT_WR)
+						if err != nil {
+							fmt.Printf("shutdown: %v\n", err)
+						}
+						px.rpcCount++
+						go rpcs.ServeConn(conn)
+					} else {
+						px.rpcCount++
+						go rpcs.ServeConn(conn)
+					}
+				} else if err == nil {
+					conn.Close()
+				}
+				if err != nil && px.dead == false {
+					fmt.Printf("Paxos(%v) accept: %v\n", me, err.Error())
+				}
+			}
+		}()
+	}
 
-  return px
+	return px
 }
